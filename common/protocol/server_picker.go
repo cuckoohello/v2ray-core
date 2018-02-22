@@ -1,12 +1,16 @@
 package protocol
 
 import (
+	"github.com/sourcegraph/checkup"
+	"log"
 	"sync"
+	"time"
 )
 
 type ServerList struct {
 	sync.RWMutex
 	servers []*ServerSpec
+	all     []*ServerSpec
 }
 
 func NewServerList() *ServerList {
@@ -44,6 +48,43 @@ func (sl *ServerList) GetServer(idx uint32) *ServerSpec {
 
 		return server
 	}
+}
+
+func (sl *ServerList) Check(timeout time.Duration, interval time.Duration) {
+	sl.all = append(sl.servers, nil)
+	var checkers []checkup.Checker
+	for _, server := range sl.servers {
+		checkers = append(checkers, checkup.TCPChecker{
+			Name:    server.PickUser().Email,
+			URL:     server.Destination().NetAddr(),
+			Timeout: timeout,
+		})
+	}
+
+	c := checkup.Checkup{
+		Checkers: checkers,
+		Notifier: sl,
+	}
+	ticker := time.NewTicker(interval)
+	go func() {
+		for range ticker.C {
+			if _, err := c.Check(); err != nil {
+				log.Println(err)
+			}
+		}
+	}()
+}
+
+func (sl *ServerList) Notify(results []checkup.Result) error {
+	sl.Lock()
+	defer sl.Unlock()
+	sl.servers = nil
+	for index, result := range results {
+		if !result.Down {
+			sl.servers = append(sl.servers, sl.all[index])
+		}
+	}
+	return nil
 }
 
 func (sl *ServerList) removeServer(idx uint32) {

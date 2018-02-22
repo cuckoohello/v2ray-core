@@ -3,6 +3,7 @@ package shadowsocks
 import (
 	"context"
 
+	"time"
 	"v2ray.com/core"
 	"v2ray.com/core/common"
 	"v2ray.com/core/common/buf"
@@ -30,6 +31,9 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	if serverList.Size() == 0 {
 		return nil, newError("0 server")
 	}
+
+	serverList.Check(time.Second, time.Minute)
+
 	client := &Client{
 		serverPicker: protocol.NewRoundRobinServerPicker(serverList),
 		v:            core.FromContext(ctx),
@@ -37,7 +41,6 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	if client.v == nil {
 		return nil, newError("V is not in context.")
 	}
-
 	return client, nil
 }
 
